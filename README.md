@@ -7,7 +7,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![License](https://img.shields.io/github/license/millylee/anyrouter-check-in)](LICENSE)
 
-多平台多账号自动签到，理论上支持所有 NewAPI、OneAPI 平台，目前内置支持 Any Router 与 Agent Router，其它可根据文档进行摸索配置。
+AnyRouter 多账号自动签到，仅处理 AnyRouter 账号配置。
 
 推荐搭配使用[Auo](https://github.com/millylee/auo)，支持任意 Claude Code Token 切换的工具。
 
@@ -17,7 +17,6 @@
 
 ## 功能特性
 
-- ✅ 多平台（兼容 NewAPI 与 OneAPI）
 - ✅ 单个/多账号自动签到
 - ✅ 多种机器人通知（可选）
 - ✅ 绕过 WAF 限制
@@ -60,7 +59,7 @@
 
 ### 4. 多账号配置格式
 
-支持单个与多个账号配置，可选 `name` 和 `provider` 字段：
+支持单个与多个账号配置，可选 `name` 和 `provider` 字段（`provider` 仅支持 `anyrouter`）：
 
 ```json
 [
@@ -71,7 +70,7 @@
   },
   {
     "name": "备用账号",
-    "provider": "agentrouter",
+    "provider": "anyrouter",
     "email": "account2@example.com",
     "password": "account2_password"
   }
@@ -83,14 +82,14 @@
 - `email` + `password`：推荐的浏览器登录方式，登录成功后会自动获取 cookies 与用户标识
 - `cookies`：兼容旧版的 session cookies 登录方式
 - `api_user`：session cookies 登录时用于请求头的 new-api-user 参数；邮箱密码登录可省略
-- `provider` (可选)：指定使用的服务商，默认为 `anyrouter`
+- `provider` (可选)：仅支持 `anyrouter`，默认为 `anyrouter`
 - `name` (可选)：自定义账号显示名称，用于通知和日志中标识账号
 
 **默认值说明**：
 
 - 如果未提供 `provider` 字段，默认使用 `anyrouter`（向后兼容）
 - 如果未提供 `name` 字段，会使用 `Account 1`、`Account 2` 等默认名称
-- `anyrouter` 与 `agentrouter` 配置已内置，无需填写
+- `provider` 为 `agentrouter` 或其他值的账号会被跳过，不会进入签到流程，也不会计入失败统计
 
 如果使用 session cookies 登录，接下来获取 cookies 与 api_user 的值。
 
@@ -155,137 +154,38 @@
 ]
 ```
 
-### 多服务商配置
+### provider 过滤行为
 
-如果你需要同时使用多个服务商（如 anyrouter 和 agentrouter）：
+- 运行时仅处理 `provider` 缺省或 `provider=anyrouter` 的账号（大小写不敏感，前后空白会自动去除）
+- `provider=agentrouter` 或任意其他值会被直接跳过，不会发起登录/签到/余额请求
+- 被跳过账号不会计入总数与失败统计，也不会触发该账号失败通知
 
-```json
-[
-  {
-    "name": "AnyRouter 主账号",
-    "provider": "anyrouter",
-    "cookies": {
-      "session": "abc123session"
-    },
-    "api_user": "user123"
-  },
-  {
-    "name": "AgentRouter 备用",
-    "provider": "agentrouter",
-    "cookies": {
-      "session": "xyz789session"
-    },
-    "api_user": "user456"
-  }
-]
-```
+## PROVIDERS 配置（可选）
 
-## 自定义 Provider 配置（可选）
-
-默认情况下，`anyrouter`、`agentrouter` 已内置配置，无需额外设置。如果你需要使用其他服务商，可以通过环境变量 `PROVIDERS` 配置：
-
-### 基础配置（仅域名）
-
-大多数情况下，只需提供 `domain` 即可，其他路径会自动使用默认值：
+默认内置仅 `anyrouter`。如需覆盖 `anyrouter` 配置，可设置环境变量 `PROVIDERS`，且仅 `anyrouter` 键会生效，其他键会被忽略并打印提示。
 
 ```json
 {
-  "customrouter": {
-    "domain": "https://custom.example.com"
+  "anyrouter": {
+    "domain": "https://anyrouter.top",
+    "persist_profile": true
   }
 }
 ```
-
-### 完整配置（自定义路径）
-
-如果服务商使用了不同的 API 路径、请求头或需要 WAF 绕过，可以额外指定：
-
-```json
-{
-  "customrouter": {
-    "domain": "https://custom.example.com",
-    "login_path": "/auth/login",
-    "sign_in_path": "/api/checkin",
-    "user_info_path": "/api/profile",
-    "api_user_key": "New-Api-User",
-    "bypass_method": "waf_cookies",
-    "waf_cookie_names": ["acw_tc", "cdn_sec_tc", "acw_sc__v2"]
-  }
-}
-```
-
-**关于 `bypass_method`**：
-
-- 不设置或设置为 `null`：直接使用用户提供的 cookies 进行请求（适合无 WAF 保护的网站）
-- 设置为 `"waf_cookies"`：使用 CloakBrowser 打开浏览器获取 WAF cookies 后再进行请求（适合有 WAF 保护的网站）
-
-> 注：`anyrouter` 和 `agentrouter` 已内置默认配置，无需在 `PROVIDERS` 中配置
-
-### 在 GitHub Actions 中配置
-
-1. 进入你的仓库 Settings -> Environments -> production
-2. 添加新的 secret：
-   - Name: `PROVIDERS`
-   - Value: 你的 provider 配置（JSON 格式）
-
-**字段说明**：
-
-- `domain` (必需)：服务商的域名
-- `login_path` (可选)：登录页面路径，默认为 `/login`（仅在 `bypass_method` 为 `"waf_cookies"` 时使用）
-- `sign_in_path` (可选)：签到 API 路径，默认为 `/api/user/sign_in`
-- `user_info_path` (可选)：用户信息 API 路径，默认为 `/api/user/self`
-- `api_user_key` (可选)：API 用户标识请求头名称，默认为 `new-api-user`
-- `bypass_method` (可选)：WAF 绕过方法
-  - `"waf_cookies"`：使用 CloakBrowser 打开浏览器获取 WAF cookies 后再执行签到
-  - 不设置或 `null`：直接使用用户 cookies 执行签到（适合无 WAF 保护的网站）
-- `waf_cookie_names` (可选)：绕过 WAF 所需 cookie 的名称列表，`bypass_method` 为 `waf_cookies` 时必须设置
-
-**配置示例**（完整）：
-
-```json
-{
-  "customrouter": {
-    "domain": "https://custom.example.com",
-    "login_path": "/auth/login",
-    "sign_in_path": "/api/checkin",
-    "user_info_path": "/api/profile",
-    "api_user_key": "x-user-id",
-    "bypass_method": "waf_cookies"
-  }
-}
-```
-
-**内置配置说明**：
-
-- `anyrouter`：
-  - `bypass_method: "waf_cookies"`（需要先获取 WAF cookies，然后执行签到）
-  - `sign_in_path: "/api/user/sign_in"`
-- `agentrouter`：
-  - `bypass_method: "waf_cookies"`（需要获取 `acw_tc`）
-  - `sign_in_path: null`（查询用户信息时自动签到）
-  - `use_proxy: true`
-
-**重要提示**：
-
-- `PROVIDERS` 是可选的，不配置则使用内置的 `anyrouter` 和 `agentrouter`
-- 自定义的 provider 配置会覆盖同名的默认配置
 
 ## 代理配置（可选）
 
-内置的 `agentrouter` 默认 `use_proxy: true`。如果你的运行环境访问该平台不稳定，可以在 GitHub Actions 中配置 mihomo 订阅代理。
+如果你的运行环境访问 AnyRouter 不稳定，可以配置代理。
 
 在仓库 Settings -> Environments -> production -> Environment secrets 中添加：
 
-- `PROXY_SUBSCRIPTION_URL`：Clash/Mihomo 订阅链接。设置后，workflow 会运行 `scripts/setup_mihomo_proxy.sh`，启动本地代理并写入 `CHECKIN_PROXY_URL`。
+- `CHECKIN_PROXY_URL`：HTTP 代理地址（如 `http://127.0.0.1:7890`）
 
 本地运行时也可以直接使用已有代理：
 
 ```bash
 CHECKIN_PROXY_URL=http://127.0.0.1:7890
-PROVIDERS={"agentrouter":{"use_proxy":true}}
 ```
-
-如果使用订阅脚本，默认会用 `https://www.google.com/generate_204` 测试代理连通性；也可以通过 `PROXY_TEST_URL` 覆盖。
 
 ## 开启通知
 
@@ -366,8 +266,6 @@ uv run python -m cloakbrowser install
 # 创建 .env 文件并配置（注意：JSON 必须是单行格式）
 # 示例：
 # ANYROUTER_ACCOUNTS=[{"name":"账号1","email":"your@email.com","password":"your_password"}]
-# PROVIDERS={"agentrouter":{"domain":"https://agentrouter.org"}}
-# PROXY_SUBSCRIPTION_URL=https://example.com/sub?token=xxx
 # CHECKIN_PROXY_URL=http://127.0.0.1:7890
 
 # 运行签到脚本

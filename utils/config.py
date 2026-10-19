@@ -94,21 +94,9 @@ class AppConfig:
 				use_proxy=False,
 				persist_profile=True,
 			),
-			'agentrouter': ProviderConfig(
-				name='agentrouter',
-				domain='https://agentrouter.org',
-				login_path='/login',
-				sign_in_path=None,  # 无需签到接口，查询用户信息时自动完成签到
-				user_info_path='/api/user/self',
-				api_user_key='new-api-user',
-				bypass_method='waf_cookies',
-				waf_cookie_names=['acw_tc'],
-				use_proxy=True,
-				persist_profile=False,
-			),
 		}
 
-		# 尝试从环境变量加载自定义 providers
+		# 仅接受 anyrouter 自定义配置，忽略其他 provider
 		providers_str = os.getenv('PROVIDERS')
 		if providers_str:
 			try:
@@ -118,19 +106,26 @@ class AppConfig:
 					print('[WARNING] PROVIDERS must be a JSON object, ignoring custom providers')
 					return cls(providers=providers)
 
-				# 解析自定义 providers,会覆盖默认配置
+				loaded_anyrouter = False
 				for name, provider_data in providers_data.items():
+					normalized_name = _normalize_provider_name(name)
+					if normalized_name != 'anyrouter':
+						print(f'[WARNING] Unsupported provider "{name}" in PROVIDERS, skipping')
+						continue
+
 					try:
-						providers[name] = ProviderConfig.from_dict(
-							name,
+						providers['anyrouter'] = ProviderConfig.from_dict(
+							'anyrouter',
 							provider_data,
-							defaults=providers.get(name),
+							defaults=providers.get('anyrouter'),
 						)
+						loaded_anyrouter = True
 					except Exception as e:
 						print(f'[WARNING] Failed to parse provider "{name}": {e}, skipping')
 						continue
 
-				print(f'[INFO] Loaded {len(providers_data)} custom provider(s) from PROVIDERS environment variable')
+				if loaded_anyrouter:
+					print('[INFO] Loaded custom anyrouter configuration from PROVIDERS environment variable')
 			except json.JSONDecodeError as e:
 				print(
 					f'[WARNING] Failed to parse PROVIDERS environment variable: {e}, using default configuration only'
@@ -143,6 +138,13 @@ class AppConfig:
 	def get_provider(self, name: str) -> ProviderConfig | None:
 		"""获取指定 provider 配置"""
 		return self.providers.get(name)
+
+
+def _normalize_provider_name(name: str | None) -> str:
+	"""标准化 provider 名称"""
+	if not isinstance(name, str):
+		return 'anyrouter'
+	return name.strip().lower() or 'anyrouter'
 
 
 @dataclass
@@ -159,7 +161,7 @@ class AccountConfig:
 	@classmethod
 	def from_dict(cls, data: dict, index: int) -> 'AccountConfig':
 		"""从字典创建 AccountConfig"""
-		provider = data.get('provider', 'anyrouter')
+		provider = _normalize_provider_name(data.get('provider', 'anyrouter'))
 		name = data.get('name', f'Account {index + 1}')
 
 		return cls(
@@ -223,6 +225,11 @@ def load_accounts_config() -> list[AccountConfig] | None:
 			if 'name' in account_dict and not account_dict['name']:
 				print(f'ERROR: Account {i + 1} name field cannot be empty')
 				return None
+
+			provider = _normalize_provider_name(account_dict.get('provider', 'anyrouter'))
+			if provider != 'anyrouter':
+				print(f'[INFO] Account {i + 1} skipped: unsupported provider "{provider}"')
+				continue
 
 			accounts.append(AccountConfig.from_dict(account_dict, i))
 
