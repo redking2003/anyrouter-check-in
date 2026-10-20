@@ -80,14 +80,6 @@ jobs:
         restore-keys: |
           browser-profiles-${{ runner.os }}-
 
-    - name: 配置代理
-      env:
-        PROXY_SUBSCRIPTION_URL: ${{ secrets.PROXY_SUBSCRIPTION_URL }}
-        PROXY_TEST_URL: https://www.google.com/generate_204
-        MIHOMO_VERSION: v1.19.27
-        PROXY_REQUIRED: false
-      run: bash scripts/setup_mihomo_proxy.sh
-
     - name: 执行签到
       env:
         DEBUG_MODE: ${{ env.DEBUG_MODE }}
@@ -95,7 +87,6 @@ jobs:
         CHECKIN_HUMANIZE: true
         CHECKIN_WAIT_TIMEOUT_MS: 120000
         ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
-        PROVIDERS: ${{ secrets.PROVIDERS }}
         DINGDING_WEBHOOK: ${{ secrets.DINGDING_WEBHOOK }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
@@ -128,10 +119,6 @@ jobs:
         if-no-files-found: warn
         include-hidden-files: true
         retention-days: 14
-
-    - name: 停止代理
-      if: always()
-      run: bash scripts/stop_mihomo_proxy.sh
 
     - name: 执行结果
       if: always()

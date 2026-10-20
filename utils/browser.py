@@ -168,8 +168,6 @@ def load_browser_login_settings(
 	profile_base = Path(os.getenv('CHECKIN_BROWSER_PROFILE_DIR', '.browser_profiles'))
 	profile_dir = profile_base / provider / account_name
 	humanize = _env_bool('CHECKIN_HUMANIZE', True)
-	if provider == 'agentrouter':
-		humanize = _env_bool('CHECKIN_HUMANIZE_AGENTROUTER', humanize)
 	return BrowserLoginSettings(
 		headless=_env_bool('CHECKIN_HEADLESS', True),
 		humanize=humanize,
