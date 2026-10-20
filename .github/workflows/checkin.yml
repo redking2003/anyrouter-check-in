@@ -1,7 +1,11 @@
 name: AnyRouter 自动签到
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/checkin.yml'
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '23 */6 * * *'
   workflow_dispatch:
     inputs:
       debug:
@@ -13,6 +17,7 @@ on:
 jobs:
   checkin:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     env:
       PYTHONIOENCODING: utf-8
@@ -105,13 +110,15 @@ jobs:
         BARK_KEY: ${{ secrets.BARK_KEY }}
         BARK_SERVER: ${{ secrets.BARK_SERVER }}
       run: |
-        xvfb-run -a --server-args="-screen 0 1920x1080x24" uv run checkin.py
+        set -o pipefail
+        xvfb-run -a --server-args="-screen 0 1920x1080x24" uv run checkin.py | tee "$RUNNER_TEMP/anyrouter-checkin.log"
+        if grep -Eq '\[FAIL\] Failed: [1-9][0-9]*/' "$RUNNER_TEMP/anyrouter-checkin.log"; then
+          echo "::error::存在 AnyRouter 账号签到失败"
+          exit 1
+        fi
 
     - name: 上传调试截图
       if: always() && env.DEBUG_MODE == 'true'
-      env:
-        HTTP_PROXY: ''
-        HTTPS_PROXY: ''
       uses: actions/upload-artifact@v4
       with:
         name: checkin-screenshots-${{ github.run_id }}
@@ -125,7 +132,3 @@ jobs:
       run: |
         echo "签到任务执行完成"
         echo "时间: $(date)"
-        if [ "${DEBUG_MODE}" = "true" ] && [ -d checkin_screenshots ] && [ "$(ls -A checkin_screenshots 2>/dev/null)" ]; then
-          echo "调试截图已上传为 artifact: checkin-screenshots-${{ github.run_id }}"
-          ls -la checkin_screenshots/
-        fi
